@@ -1,0 +1,11 @@
+<div class="drum-select-menu-container" *ngIf="option">
+  <div class="select-menu-box">
+    <div class="select-menu-box-inner" (click)="onClickMenu()">
+      <div class="select-menu-title">{{ selectedOption.name }}</div>
+      <div class="select-menu-arrow"></div>
+    </div>
+    <ul *ngIf="isOpen" class="select-menu-option-wrap custom-scroll">
+      <li (mouseover)="onMouseOver(item)" (mouseout)="onMouseOut()" (click)="onClickItem(item, i)" *ngFor="let item of option; index as i" class="select-menu-option">{{ item.name }}</li>
+    </ul>
+  </div>
+</div>

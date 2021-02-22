@@ -1,0 +1,14 @@
+<div class="dram-pad-container">
+  <ul class="dram-pad-wrap">
+    <li
+      [ngClass]="{ 'dram-btn-active': btnPressed[number].status }"
+      *ngFor="let number of [7, 8, 9, 4, 5, 6, 1, 2, 3]"
+      class="dram-pad-item"
+    >
+      <button (click)="onBtnClick(number)" class="btn">
+        <span>{{ number }}</span>
+        <app-drum-select-menu (selectedAudio)="onSelectedAudio($event, number)" *ngIf="audioDataPath[number]" [option]="audioDataPath[number]" class="drap-select"></app-drum-select-menu>
+      </button>
+    </li>
+  </ul>
+</div>
