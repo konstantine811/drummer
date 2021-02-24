@@ -6,6 +6,10 @@ import {
   OnInit,
   ViewChild,
 } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+// libs
+import * as Tone from 'tone';
+import { THIS_EXPR } from '@angular/compiler/src/output/output_ast';
 
 @Component({
   selector: 'app-vinyl-scratch',
@@ -32,13 +36,19 @@ export class VinylScratchComponent implements OnInit, AfterViewInit {
   lastX = 0;
   lastY = 0;
   size = 512;
+  speedBase = 1;
 
+  delay!: DelayNode;
+  audioSource!: AudioBufferSourceNode;
   context!: AudioContext;
   oscillator!: OscillatorNode;
   vinylGain!: GainNode;
   oscillatorGain!: GainNode;
+  player!: Tone.Player;
+  prevAngle!: number;
+  vinylSource!: AudioBufferSourceNode;
 
-  constructor() {}
+  constructor(private http: HttpClient) {}
 
   rotateRecord = (timestamp: number): void => {
     if (!this.scratching) {
@@ -58,15 +68,23 @@ export class VinylScratchComponent implements OnInit, AfterViewInit {
           `rotate(${this.angle}, 256, 256)`
         );
       }
-      requestAnimationFrame(this.rotateRecord);
     }
+    if (this.scratching) {
+      if (!this.prevAngle && this.prevAngle !== this.angle) {
+      } else if (this.angle === this.prevAngle) {
+        this.audioSource.playbackRate.value = 0;
+        this.vinylSource.playbackRate.value = 0;
+      }
+      this.prevAngle = this.angle;
+    }
+    requestAnimationFrame(this.rotateRecord);
   };
 
   @HostListener('window:keyup', ['$event'])
-  onKeyupHandler(event: KeyboardEvent):void {
+  onKeyupHandler(event: KeyboardEvent): void {
     switch (event.code) {
       case 'ArrowUp':
-        console.log('this')
+        console.log('this');
         this.scratching = true;
         break;
     }
@@ -77,6 +95,8 @@ export class VinylScratchComponent implements OnInit, AfterViewInit {
     this.oscillatorGain.gain.value = this.gainOffValue;
     this.vinylGain.gain.value = this.vinylGainValue;
     this.scratching = false;
+    this.audioSource.playbackRate.value = 1;
+    this.vinylSource.playbackRate.value = 1;
     this.rotationOffset = this.angle;
     this.rotationStart = -1;
     this.rotateRecord(-1);
@@ -107,14 +127,17 @@ export class VinylScratchComponent implements OnInit, AfterViewInit {
         rotation = (deltaY / this.size) * 180.0 * direction;
         frequency +=
           (Math.abs(deltaY) - this.frequencyThreshold) * this.frequencyStep;
+        /*  this.audioSource.playbackRate.value = Math.abs(
+          this.normilize(rotation, 1, 0.)
+        ); */
       }
       this.oscillator.frequency.exponentialRampToValueAtTime(
         frequency,
         this.context.currentTime + 0.02
       );
       this.oscillatorGain.gain.value = this.oscillatorGainValue;
-
       this.angle += rotation;
+
       this.recordGroupEl.setAttribute(
         'transform',
         `rotate(${this.angle}, 256, 256)`
@@ -125,11 +148,15 @@ export class VinylScratchComponent implements OnInit, AfterViewInit {
       );
       this.oscillatorGain.gain.setValueAtTime(
         this.gainOffValue,
-        this.context.currentTime + 0.06
+        this.context.currentTime + 0.6
       );
       this.lastX = ev.offsetX;
       this.lastY = ev.offsetY;
     }
+  }
+
+  normilize(val: number, max: number, min: number): number {
+    return (val - min) / (max - min);
   }
 
   createAudioCtx(): void {
@@ -149,7 +176,7 @@ export class VinylScratchComponent implements OnInit, AfterViewInit {
     const channelData1 = dataBuffer.getChannelData(1);
     const popCount = 0; // only used for chanel 1
     for (let i = 0; i < frameCount; i++) {
-      const rVal = Math.random() * 0.05 - 0.025;
+      const rVal = Math.random() * 0.005 - 0.0025;
       channelData0[i] = i < frameCount / 2.0 ? rVal * 0.8 : rVal;
       channelData1[i] =
         popCount < 3 && Math.abs(rVal) > 0.0249975
@@ -159,18 +186,18 @@ export class VinylScratchComponent implements OnInit, AfterViewInit {
           : 0.0;
     }
     // create AudioBufferSourceNode and set data buffer
-    const vinylSource = this.context.createBufferSource();
-    vinylSource.buffer = dataBuffer;
+    this.vinylSource = this.context.createBufferSource();
+    this.vinylSource.buffer = dataBuffer;
     // create gain for vinyl audio and connect
     this.vinylGain = this.context.createGain();
     this.vinylGain.gain.value = this.vinylGainValue;
-    vinylSource.connect(this.context.destination);
-    vinylSource.loop = true;
-    vinylSource.start();
+    this.vinylSource.connect(this.context.destination);
+    this.vinylSource.loop = true;
+    this.vinylSource.start();
     // setup oscillator sor "scratching" sounds
     this.oscillator = this.context.createOscillator();
     this.oscillator.frequency.value = this.frequencyBase;
-    this.oscillator.type = 'triangle';
+    this.oscillator.type = 'sine';
 
     this.oscillatorGain = this.context.createGain();
     this.oscillatorGain.gain.value = this.gainOffValue;
@@ -179,8 +206,38 @@ export class VinylScratchComponent implements OnInit, AfterViewInit {
     this.oscillator.start();
   }
 
+  async createAudio(): Promise<void> {
+    const url = './assets/soundtraks/samurai.mp3';
+    this.http
+      .get(url, {
+        responseType: 'arraybuffer',
+      })
+      .subscribe(async (res) => {
+        const audioBuffer = await this.context.decodeAudioData(res);
+        this.audioSource = this.context.createBufferSource();
+        this.delay = this.context.createDelay(5.0);
+        this.audioSource.buffer = audioBuffer;
+        this.audioSource.loop = true;
+        this.audioSource.connect(this.context.destination);
+        this.context.resume();
+        this.audioSource.start();
+      });
+  }
+
+  @HostListener('document:visibilitychange', ['$event'])
+  async onWindowHidden(): Promise<void> {
+    const hidden = document.hidden;
+    if (!hidden) {
+      this.context.resume();
+    } else {
+      console.log('hide');
+      this.context.suspend();
+    }
+  }
+
   ngOnInit(): void {
     this.createAudioCtx();
+    this.createAudio();
   }
 
   ngAfterViewInit(): void {
